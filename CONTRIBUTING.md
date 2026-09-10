@@ -128,7 +128,8 @@ refactor(frontend): 抽取游戏循环为独立模块
 
 ### 4.2 前端（Vue3 + TypeScript）
 
-- 使用 **ESLint + Prettier**，提交前自动格式化。
+- 使用 **ESLint + oxlint + Prettier**，提交前自动格式化。oxlint 负责快速基础检查，ESLint 负责 Vue/TS 深度规则。
+- 执行 `npm run lint` 会自动依次运行 oxlint 和 ESLint。
 - 组件文件使用 **PascalCase**，如 `GameBoard.vue`。
 - 工具函数、变量使用 **camelCase**。
 - 常量使用 **UPPER_SNAKE_CASE**。
