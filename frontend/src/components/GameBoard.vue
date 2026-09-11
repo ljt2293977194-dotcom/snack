@@ -3,9 +3,18 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import type { Direction } from '../game/types'
 import { CELL_SIZE, GRID_COLS, GRID_ROWS, INITIAL_SPEED_MS } from '../game/constants'
 import { changeDirection, createInitialState, tick, type GameState } from '../game/gameLoop'
+import { fetchTopScores, uploadScore } from '../api/score'
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const gameState = ref<GameState>(createInitialState())
+
+// 最高分（从后端拉取）
+const bestScore = ref<number>(0)
+
+// 上传状态
+const playerName = ref<string>('')
+const uploading = ref<boolean>(false)
+const uploadMsg = ref<string>('')
 
 let timerId: number | null = null
 
@@ -28,7 +37,7 @@ function render() {
 
   // 画蛇
   state.snake.forEach((p, i) => {
-    ctx.fillStyle = i === 0 ? '#2ecc71' : '#27ae60' // 蛇头浅绿，身体深绿
+    ctx.fillStyle = i === 0 ? '#2ecc71' : '#27ae60'
     ctx.fillRect(p.x * CELL_SIZE, p.y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
   })
 
@@ -39,9 +48,9 @@ function render() {
     ctx.fillStyle = '#fff'
     ctx.font = '24px sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText('游戏结束', canvas.width / 2, canvas.height / 2 - 10)
+    ctx.fillText('游戏结束', canvas.width / 2, canvas.height / 2 - 30)
     ctx.font = '16px sans-serif'
-    ctx.fillText('点击"重新开始"再来一局', canvas.width / 2, canvas.height / 2 + 20)
+    ctx.fillText(`本局得分：${state.score}`, canvas.width / 2, canvas.height / 2 + 5)
   }
 }
 
@@ -49,8 +58,13 @@ function render() {
 function startLoop() {
   stopLoop()
   timerId = window.setInterval(() => {
-    gameState.value = tick(gameState.value)
+    const prev = gameState.value
+    gameState.value = tick(prev)
     render()
+    // 检测是否刚结束
+    if (prev.status === 'playing' && gameState.value.status === 'gameover') {
+      onGameOver()
+    }
   }, INITIAL_SPEED_MS)
 }
 
@@ -66,8 +80,49 @@ function stopLoop() {
 function startGame() {
   gameState.value = createInitialState()
   gameState.value.status = 'playing'
+  uploadMsg.value = ''
   render()
-  startLoop()
+}
+
+/** 游戏结束回调 */
+async function onGameOver() {
+  stopLoop()
+  // 如果本局分数为 0，直接刷新最高分即可
+  if (gameState.value.score === 0) {
+    await loadBestScore()
+    return
+  }
+  // 等玩家填昵称后点"上传分数"
+}
+
+/** 上传分数 */
+async function submitScore() {
+  const name = playerName.value.trim()
+  if (!name) {
+    uploadMsg.value = '请输入昵称'
+    return
+  }
+  uploading.value = true
+  uploadMsg.value = ''
+  try {
+    await uploadScore(name, gameState.value.score)
+    uploadMsg.value = '上传成功！'
+    await loadBestScore()
+  } catch (e) {
+    uploadMsg.value = '上传失败：' + (e as Error).message
+  } finally {
+    uploading.value = false
+  }
+}
+
+/** 加载最高分 */
+async function loadBestScore() {
+  try {
+    const list = await fetchTopScores(1)
+    bestScore.value = list[0]?.score ?? 0
+  } catch {
+    // 后端没起或网络问题，忽略
+  }
 }
 
 /** 键盘处理 */
@@ -83,14 +138,22 @@ function handleKeydown(e: KeyboardEvent) {
     d: 'right',
   }
   const dir = map[e.key]
-  if (dir) {
-    e.preventDefault()
-    gameState.value = changeDirection(gameState.value, dir)
+  if (!dir) return
+
+  e.preventDefault()
+
+  if (gameState.value.status !== 'playing') return
+
+  if (timerId === null) {
+    startLoop()
   }
+
+  gameState.value = changeDirection(gameState.value, dir)
 }
 
 onMounted(() => {
   render()
+  loadBestScore()
   window.addEventListener('keydown', handleKeydown)
 })
 
@@ -104,6 +167,7 @@ onUnmounted(() => {
   <div class="game-board">
     <div class="hud">
       <span>得分：{{ gameState.score }}</span>
+      <span>最高分：{{ bestScore }}</span>
       <button v-if="gameState.status !== 'playing'" @click="startGame">
         {{ gameState.status === 'gameover' ? '重新开始' : '开始游戏' }}
       </button>
@@ -114,6 +178,27 @@ onUnmounted(() => {
       :width="GRID_COLS * CELL_SIZE"
       :height="GRID_ROWS * CELL_SIZE"
     />
+
+    <!-- 游戏结束时显示上传表单 -->
+    <div v-if="gameState.status === 'gameover' && gameState.score > 0" class="upload-panel">
+      <input
+        v-model="playerName"
+        type="text"
+        placeholder="输入昵称（1-20字符）"
+        maxlength="20"
+        :disabled="uploading"
+      />
+      <button :disabled="uploading" @click="submitScore">
+        {{ uploading ? '上传中...' : '上传分数' }}
+      </button>
+      <p v-if="uploadMsg" class="upload-msg">{{ uploadMsg }}</p>
+    </div>
+
+    <p class="tips">
+      {{ gameState.status === 'playing' && timerId === null
+        ? '按方向键或 WASD 开始移动'
+        : '方向键或 WASD 控制方向' }}
+    </p>
   </div>
 </template>
 
@@ -125,6 +210,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 20px;
   margin-bottom: 10px;
   font-size: 18px;
 }
@@ -142,7 +228,37 @@ button {
   border: none;
   border-radius: 4px;
 }
-button:hover {
+button:hover:not(:disabled) {
   background: #27ae60;
+}
+button:disabled {
+  background: #666;
+  cursor: not-allowed;
+}
+.upload-panel {
+  margin-top: 15px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+.upload-panel input {
+  padding: 6px 10px;
+  font-size: 14px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: #333;
+  color: #eee;
+}
+.upload-msg {
+  width: 100%;
+  font-size: 14px;
+  color: #f39c12;
+}
+.tips {
+  color: #888;
+  font-size: 14px;
+  margin-top: 20px;
 }
 </style>
