@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import GameBoard from './components/GameBoard.vue'
+import RankingList from './components/RankingList.vue'
 </script>
 
 <template>
   <div class="app">
     <h1>Snack 贪吃蛇</h1>
     <GameBoard />
+    <RankingList />
   </div>
 </template>
 
