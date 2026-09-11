@@ -6,7 +6,6 @@ import GameBoard from './components/GameBoard.vue'
   <div class="app">
     <h1>Snack 贪吃蛇</h1>
     <GameBoard />
-    <p class="tips">方向键或 WASD 控制方向</p>
   </div>
 </template>
 
@@ -18,10 +17,5 @@ import GameBoard from './components/GameBoard.vue'
   color: #eee;
   background: #222;
   min-height: 100vh;
-}
-.tips {
-  color: #888;
-  font-size: 14px;
-  margin-top: 20px;
 }
 </style>
