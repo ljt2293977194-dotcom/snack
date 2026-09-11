@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!-- namespace 必须精确指向 Mapper 接口的全限定名 -->
+<mapper namespace="com.snack.backend.mapper.ScoreMapper">
+
+    <!-- 插入分数 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO score (player_name, score)
+        VALUES (#{playerName}, #{score})
+    </insert>
+
+    <!-- 排行榜查询：按分数降序，取前 N 条 -->
+    <select id="findTop" resultType="Score">
+        SELECT id, player_name, score, created_at
+        FROM score
+        ORDER BY score DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>
